@@ -588,11 +588,14 @@ fn emit_component<F: io::Write>(
         writeln!(f, "{decl};")
     })?;
 
-    // cell instances
-    comp.cells
-        .iter()
-        .filter_map(|cell| cell_instance(&cell.borrow()))
-        .try_for_each(|instance| writeln!(f, "{instance}"))?;
+    // cell instances (prefixed with any clock-annotation synthesis attributes)
+    for cell in comp.cells.iter() {
+        let cell = cell.borrow();
+        if let Some(instance) = cell_instance(&cell) {
+            emit_clock_attrs(&cell, f)?;
+            writeln!(f, "{instance}")?;
+        }
+    }
 
     // gather assignments keyed by destination
     let mut map: HashMap<_, (RRC<ir::Port>, Vec<_>)> = HashMap::new();
@@ -698,6 +701,37 @@ fn wire_decls(cell: &ir::Cell) -> Vec<(String, u64, ir::Direction)> {
             ir::PortParent::StaticGroup(_) => unreachable!(),
         })
         .collect()
+}
+
+/// Emit Verilog synthesis-attribute pragmas for a cell's clock annotations
+/// (`@clk_skew`, `@double_pump`, `@clk_cycles`). A `(* ... *)` attribute binds
+/// to the instantiation emitted immediately after it. `@clk_skew` additionally
+/// emits the equivalent SDC useful-skew constraint as a comment so the timing
+/// intent survives in the emitted Verilog for downstream STA/P&R tools.
+///
+/// These are annotations only: they do not (yet) rewire the cell to a derived
+/// clock. Skew is *correctly* a timing-constraint concept (it must not change
+/// behavior); functional derived-clock lowering for `@double_pump`/`@clk_cycles`
+/// is left as follow-up.
+fn emit_clock_attrs<F: io::Write>(
+    cell: &ir::Cell,
+    f: &mut F,
+) -> io::Result<()> {
+    let name = cell.name();
+    if let Some(n) = cell.attributes.get(ir::NumAttr::ClkSkew) {
+        writeln!(f, "(* calyx_clk_skew = {n} *)")?;
+        writeln!(
+            f,
+            "// calyx: useful-skew constraint -> set_clock_latency {n} [get_pins {name}/clk]"
+        )?;
+    }
+    if let Some(n) = cell.attributes.get(ir::NumAttr::DoublePump) {
+        writeln!(f, "(* calyx_double_pump = {n} *)")?;
+    }
+    if let Some(n) = cell.attributes.get(ir::NumAttr::ClkCycles) {
+        writeln!(f, "(* calyx_clk_cycles = {n} *)")?;
+    }
+    Ok(())
 }
 
 fn cell_instance(cell: &ir::Cell) -> Option<v::Instance> {

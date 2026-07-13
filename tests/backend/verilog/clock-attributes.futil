@@ -1,0 +1,30 @@
+// -p well-formed -b verilog
+// Exercises the per-cell clock annotations (@clk_skew / @double_pump /
+// @clk_cycles). The Verilog backend should emit a `(* calyx_* = N *)`
+// synthesis-attribute pragma immediately before each annotated cell instance,
+// and for @clk_skew also an SDC useful-skew constraint comment.
+import "primitives/core.futil";
+import "primitives/binary_operators.futil";
+
+component main(@go go: 1, @clk clk: 1, @reset reset: 1, in: 32) -> (@done done: 1, out: 32) {
+  cells {
+    r1 = std_reg(32);
+    @clk_skew(3) r2 = std_reg(32);      // useful-skew: balance pipeline stages
+    @double_pump(2) mac = std_mult_pipe(32);
+    @clk_cycles(4) slow = std_reg(32);  // multi-rate: clocked every 4 base cycles
+  }
+  wires {
+    r1.in = in;
+    r1.write_en = go;
+    mac.left = r1.out;
+    mac.right = r1.out;
+    mac.go = go;
+    r2.in = mac.out;
+    r2.write_en = mac.done;
+    slow.in = r2.out;
+    slow.write_en = go;
+    out = slow.out;
+    done = 1'd1;
+  }
+  control {}
+}

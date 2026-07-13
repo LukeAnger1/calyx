@@ -135,6 +135,21 @@ pub enum NumAttr {
     Interval,
     #[strum(serialize = "state")]
     State,
+    // ============ clock annotations ============
+    // These annotate an individual cell with clock behavior derived from the
+    // base clock; they never redefine the global `clk`. Emitted into Verilog as
+    // `(* calyx_* = N *)` synthesis attributes (see calyx-backend verilog).
+    #[strum(serialize = "clk_skew")]
+    /// Useful-skew hint: shift this cell's clock edge by N units to balance
+    /// pipeline stages. Behavior/cycle-count preserved; lowered to a timing
+    /// constraint (synthesis attribute + SDC hint), not a separate clock.
+    ClkSkew,
+    #[strum(serialize = "double_pump")]
+    /// Run this cell at N× the base clock (N operations per base cycle).
+    DoublePump,
+    #[strum(serialize = "clk_cycles")]
+    /// Clock this cell once every N base cycles (÷N multi-rate clocking).
+    ClkCycles,
 }
 impl From<NumAttr> for Attribute {
     fn from(attr: NumAttr) -> Self {
